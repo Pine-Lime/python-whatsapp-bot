@@ -2,6 +2,7 @@ import logging
 from flask import current_app, jsonify
 import json
 import requests
+from utils.utils import uploadToS3
 
 # from app.services.openai_service import generate_response
 import re
@@ -76,20 +77,27 @@ def process_text_for_whatsapp(text):
 
 
 def process_whatsapp_message(body):
+    logging.info(body)
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
 
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-    message_body = message["text"]["body"]
 
-    # TODO: implement custom function here
-    response = generate_response(message_body)
+    # Check if the message contains an image
+    if message.get("image"):
+        image_id = message["image"]["id"]
+        image_url = get_image_url(image_id)
+        uploadToS3(image_url)
+        logging.info(f"Received image: {image_url}")
+        # You can now process the image URL, such as downloading or storing it
+        response_text = "Image received, thank you!"
+    else:
+        # Process regular text message
+        message_body = message["text"]["body"]
+        response_text = generate_response(message_body)
 
-    # OpenAI Integration
-    # response = generate_response(message_body, wa_id, name)
-    # response = process_text_for_whatsapp(response)
-
-    data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response)
+    # Prepare response message
+    data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response_text)
     send_message(data)
 
 
@@ -105,3 +113,40 @@ def is_valid_whatsapp_message(body):
         and body["entry"][0]["changes"][0]["value"].get("messages")
         and body["entry"][0]["changes"][0]["value"]["messages"][0]
     )
+
+
+def get_image_url(media_id):
+    headers = {
+        "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
+    }
+
+    url = f"https://graph.facebook.com/{current_app.config['VERSION']}/{media_id}"
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        image_url = response.json().get("url")
+        return image_url
+    except requests.RequestException as e:
+        logging.error(f"Failed to get image URL: {e}")
+        return None
+
+
+def download_image(image_url):
+    try:
+        headers = {
+            "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
+        }
+        response = requests.get(image_url, stream=True, headers=headers)
+        if response.status_code == 200:
+            # Save the image locally or process as needed
+            with open("received_image.jpg", "wb") as f:
+                for chunk in response.iter_content(1024):
+                    f.write(chunk)
+            logging.info("Image downloaded successfully.")
+        else:
+            logging.error(
+                f"Failed to download image, status code: {response.status_code}"
+            )
+    except requests.RequestException as e:
+        logging.error(f"Error downloading image: {e}")
