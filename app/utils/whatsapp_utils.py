@@ -2,9 +2,9 @@ import logging
 from flask import current_app, jsonify
 import json
 import requests
-from utils.utils import uploadToS3
+from .utils import uploadToS3
 
-# from app.services.openai_service import generate_response
+from app.services.openai_service import generate_response
 import re
 
 
@@ -26,9 +26,9 @@ def get_text_message_input(recipient, text):
     )
 
 
-def generate_response(response):
-    # Return text in uppercase
-    return response.upper()
+# def generate_response(response):
+#     # Return text in uppercase
+#     return response.upper()
 
 
 def send_message(data):
@@ -94,7 +94,7 @@ def process_whatsapp_message(body):
     else:
         # Process regular text message
         message_body = message["text"]["body"]
-        response_text = generate_response(message_body)
+        response_text = generate_response(message_body, wa_id, name)
 
     # Prepare response message
     data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response_text)
