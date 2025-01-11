@@ -5,13 +5,15 @@ import os
 import time
 
 load_dotenv()
-OPEN_AI_API_KEY = os.getenv("OPEN_AI_API_KEY")
+OPEN_AI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPEN_AI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 client = OpenAI(api_key=OPEN_AI_API_KEY)
 
 
 # --------------------------------------------------------------
 # Upload file
 # --------------------------------------------------------------
+'''
 def upload_file(path):
     # Upload a file with an "assistants" purpose
     file = client.files.create(file=open(path, "rb"), purpose="assistants")
@@ -19,26 +21,24 @@ def upload_file(path):
 
 
 file = upload_file("../data/airbnb-faq.pdf")
-
+'''
 
 # --------------------------------------------------------------
 # Create assistant
 # --------------------------------------------------------------
-def create_assistant(file):
+def create_assistant():
     """
     You currently cannot set the temperature for Assistant via the API.
     """
     assistant = client.beta.assistants.create(
-        name="WhatsApp AirBnb Assistant",
-        instructions="You're a helpful WhatsApp assistant that can assist guests that are staying in our Paris AirBnb. Use your knowledge base to best respond to customer queries. If you don't know the answer, say simply that you cannot help with question and advice to contact the host directly. Be friendly and funny.",
-        tools=[{"type": "retrieval"}],
-        model="gpt-4-1106-preview",
-        file_ids=[file.id],
+        name="Whack-A-Me",
+        instructions="We're going to create a personalised game for a customer that helps you apologize for something silly that they've done. In order to create this game, we need the following information from them: 1. What is your name?* 2. Who is this for?* 3. Describe how you annoyed them to help us create a fun poem* 4. Write a small ending message This shows up at the end of the game. By default it is I'll be better!  5. We just need two pictures from you. One smiling and One Frowning. These images will be uploaded. We need to ask the customer to upload this. It helps us create an avatar for them. This is going to be a WhatsApp Bot. You are the assistant helping people make this game on WhatsApp.",
+        model="gpt-4o"
     )
     return assistant
 
 
-assistant = create_assistant(file)
+assistant = create_assistant()
 
 
 # --------------------------------------------------------------
@@ -91,7 +91,7 @@ def generate_response(message_body, wa_id, name):
 # --------------------------------------------------------------
 def run_assistant(thread):
     # Retrieve the Assistant
-    assistant = client.beta.assistants.retrieve("asst_7Wx2nQwoPWSf710jrdWTDlfE")
+    assistant = client.beta.assistants.retrieve(OPEN_AI_ASSISTANT_ID)
 
     # Run the assistant
     run = client.beta.threads.runs.create(
@@ -116,10 +116,10 @@ def run_assistant(thread):
 # Test assistant
 # --------------------------------------------------------------
 
-new_message = generate_response("What's the check in time?", "123", "John")
+new_message = generate_response("Can you help me make a game?", "125", "Amit")
 
-new_message = generate_response("What's the pin for the lockbox?", "456", "Sarah")
+# new_message = generate_response("What's the pin for the lockbox?", "456", "Sarah")
 
-new_message = generate_response("What was my previous question?", "123", "John")
+new_message = generate_response("im Amit, it's for my wife and i forgot to apologise for leaving the toilet seat up", "123", "Amit")
 
-new_message = generate_response("What was my previous question?", "456", "Sarah")
+# new_message = generate_response("What was my previous question?", "456", "Sarah")
