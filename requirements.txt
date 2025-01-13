@@ -4,3 +4,4 @@ openai
 aiohttp
 requests
 supabase
+pyodbc==4.0.39

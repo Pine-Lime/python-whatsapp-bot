@@ -8,11 +8,19 @@ import json
 from supabase import create_client, Client
 import os
 import uuid
+import pyodbc
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Update database configuration for Azure SQL
+DB_SERVER = os.getenv("DB_SERVER")  # yourserver.database.windows.net
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_DRIVER = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")  # or 17 depending on your system
 
 tools = [
     {
@@ -141,15 +149,81 @@ def create_assistant():
     return assistant
 
 
-# Use context manager to ensure the shelf file is closed properly
-def check_if_thread_exists(wa_id):
-    with shelve.open("threads_db") as threads_shelf:
-        return threads_shelf.get(wa_id, None)
+def get_db_connection():
+    """Create and return a database connection"""
+    connection_string = (
+        f'DRIVER={DB_DRIVER};'
+        f'SERVER={DB_SERVER};'
+        f'DATABASE={DB_NAME};'
+        f'UID={DB_USER};'
+        f'PWD={DB_PASSWORD};'
+        'Encrypt=yes;'
+        'TrustServerCertificate=no;'
+        'Connection Timeout=30;'
+    )
+    return pyodbc.connect(connection_string)
 
+def init_db():
+    """Initialize the database table if it doesn't exist"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # SQL Server syntax for creating table if not exists
+        cur.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='thread_messages' AND xtype='U')
+            CREATE TABLE thread_messages (
+                wa_id VARCHAR(255) PRIMARY KEY,
+                thread_id VARCHAR(255) NOT NULL,
+                created_at DATETIME DEFAULT GETDATE()
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"Error creating table: {e}")
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+def check_if_thread_exists(wa_id):
+    """Check if a thread exists for the given wa_id"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute("SELECT thread_id FROM thread_messages WHERE wa_id = ?", (wa_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        cur.close()
+        conn.close()
 
 def store_thread(wa_id, thread_id):
-    with shelve.open("threads_db", writeback=True) as threads_shelf:
-        threads_shelf[wa_id] = thread_id
+    """Store thread information in the database"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # SQL Server MERGE statement (equivalent to PostgreSQL's INSERT ... ON CONFLICT)
+        cur.execute("""
+            MERGE thread_messages AS target
+            USING (SELECT ? as wa_id, ? as thread_id) AS source
+            ON target.wa_id = source.wa_id
+            WHEN MATCHED THEN
+                UPDATE SET thread_id = source.thread_id
+            WHEN NOT MATCHED THEN
+                INSERT (wa_id, thread_id)
+                VALUES (source.wa_id, source.thread_id);
+        """, (wa_id, thread_id))
+        conn.commit()
+    except Exception as e:
+        print(f"Error storing thread: {e}")
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
 def run_assistant(thread):
     assistant = client.beta.assistants.retrieve(OPENAI_ASSISTANT_ID)
     
