@@ -84,13 +84,23 @@ def process_whatsapp_message(body):
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
 
     # Check if the message contains an image
-    if message.get("image"):
-        image_id = message["image"]["id"]
-        image_url = get_image_url(image_id)
-        uploadToS3(image_url)
-        logging.info(f"Received image: {image_url}")
-        # You can now process the image URL, such as downloading or storing it
-        response_text = "Image received, thank you!"
+    if message.get("type") == "image":
+        try:
+            image_id = message["image"]["id"]
+            # Construct the media URL
+            image_url = f"https://graph.facebook.com/v18.0/{image_id}"
+            
+            # Upload directly using the media ID
+            s3_url = uploadToS3(image_url)
+            
+            if isinstance(s3_url, str) and s3_url.startswith('http'):
+                response_text = "Image received and uploaded successfully!"
+            else:
+                response_text = f"Sorry, I couldn't process your image: {s3_url}"
+                
+        except Exception as e:
+            logging.error(f"Error processing image: {e}")
+            response_text = "Sorry, there was an error processing your image. Please try again."
     else:
         # Process regular text message
         message_body = message["text"]["body"]

@@ -18,16 +18,34 @@ def uploadToS3(image_data, location="Test"):
     """
     try:
         if isinstance(image_data, str):
-            # If image_data is a URL, download it
+            # If image_data is a URL, download it with proper headers
             headers = {
                 "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
+                "User-Agent": "WhatsAppBot/1.0"
             }
-            response = requests.get(image_data)
+            
+            # First, get the actual media URL
+            media_id = image_data.split('mid=')[1].split('&')[0]
+            media_url = f"https://graph.facebook.com/v18.0/{media_id}"
+            
+            # Get the actual download URL
+            media_response = requests.get(media_url, headers=headers)
+            if not media_response.ok:
+                print(f"Error getting media URL: {media_response.text}")
+                return "Error getting media URL"
+                
+            download_url = media_response.json().get('url')
+            if not download_url:
+                print("No download URL found in media response")
+                return "No download URL found"
+                
+            # Download the actual image
+            response = requests.get(download_url, headers=headers)
             if not response.ok:
-                print(f"Error downloading image from {image_data}")
+                print(f"Error downloading image: {response.text}")
                 return "Error downloading image"
             content = response.content
-            file_type = response.headers['Content-Type']
+            file_type = response.headers.get('Content-Type', 'image/jpeg')
         else:
             # If image_data is bytes, use it directly
             content = image_data
@@ -45,7 +63,7 @@ def uploadToS3(image_data, location="Test"):
         if upload_response.ok:
             return s3_links['objectURL']
         else:
-            print(upload_response.text)
+            print(f"Error uploading to S3: {upload_response.text}")
             return upload_response.text
 
     except Exception as e:
