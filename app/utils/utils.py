@@ -14,18 +14,27 @@ def generate_s3_post_url(file_name, file_type, location):
 def uploadToS3(image_data, location="Test"):
     """
     Upload image to S3
-    image_data can be either a URL string or bytes
+    image_data can be either a media ID, URL string, or bytes
     """
     try:
         if isinstance(image_data, str):
-            # If image_data is a URL, download it with proper headers
             headers = {
                 "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
                 "User-Agent": "WhatsAppBot/1.0"
             }
             
-            # First, get the actual media URL
-            media_id = image_data.split('mid=')[1].split('&')[0]
+            # If it's a URL starting with http, use it directly
+            if image_data.startswith('http'):
+                media_id = image_data.split('mid=')[1].split('&')[0] if 'mid=' in image_data else None
+            else:
+                # Assume it's a media ID
+                media_id = image_data
+                
+            if not media_id:
+                print("No media ID found")
+                return "No media ID found"
+                
+            # Get the media URL
             media_url = f"https://graph.facebook.com/v18.0/{media_id}"
             
             # Get the actual download URL
