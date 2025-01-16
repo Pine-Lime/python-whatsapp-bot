@@ -3,6 +3,9 @@ import datetime
 import base64
 import json
 from flask import current_app
+import logging
+from io import BytesIO
+from PIL import Image
 
 def generate_s3_post_url(file_name, file_type, location):
     url = "https://pinenlime.com/_functions/uploadImage"
@@ -11,9 +14,71 @@ def generate_s3_post_url(file_name, file_type, location):
     response = requests.post(url, json=data, headers=headers)
     return response.json()
 
+def process_face_cutout(image_url):
+    """Process image through cutout.pro API for face detection"""
+    try:
+        # Call the cutout.pro API
+        cutout_response = requests.get(
+            f"https://www.cutout.pro/api/v1/mattingByUrl",
+            params={
+                "url": image_url,
+                "mattingType": "3",
+                "crop": "true",
+                "preview": "true",
+                "faceAnalysis": "true"
+            },
+            headers={
+                "APIKEY": "2d4e70bdccd74b3d97bda50ddd9ea7f8"
+            }
+        )
+        
+        if not cutout_response.ok:
+            logging.error(f"Cutout API error: {cutout_response.text}")
+            return None, None
+            
+        cutout_data = cutout_response.json()
+        
+        if not cutout_data.get("data"):
+            logging.error("No data in cutout response")
+            return None, None
+            
+        # Get face analysis data
+        face_points = cutout_data["data"].get("faceAnalysis", {}).get("faces", [])
+        
+        # Convert base64 to image content
+        image_base64 = cutout_data["data"].get("imageBase64")
+        if not image_base64:
+            logging.error("No image data in response")
+            return None, face_points
+            
+        image_content = base64.b64decode(image_base64)
+        
+        # Upload processed image to S3
+        current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = f"processed_{current_time}.png"
+        
+        s3_links = generate_s3_post_url(file_name, "image/png", "processed_images")
+        
+        # Upload to S3
+        upload_response = requests.put(
+            s3_links['url'], 
+            data=image_content, 
+            headers={"Content-Type": "image/png"}
+        )
+        
+        if not upload_response.ok:
+            logging.error(f"S3 upload error: {upload_response.text}")
+            return None, face_points
+            
+        return s3_links['objectURL'], face_points
+        
+    except Exception as e:
+        logging.error(f"Error in face cutout processing: {e}")
+        return None, None
+
 def uploadToS3(image_data, location="Test"):
     """
-    Upload image to S3
+    Upload image to S3 and process face cutout
     image_data can be either a media ID, URL string, or bytes
     """
     try:
@@ -69,11 +134,20 @@ def uploadToS3(image_data, location="Test"):
 
         # Upload to S3
         upload_response = requests.put(s3_links['url'], data=content, headers={"Content-Type": file_type})
-        if upload_response.ok:
-            return s3_links['objectURL']
-        else:
+        if not upload_response.ok:
             print(f"Error uploading to S3: {upload_response.text}")
             return upload_response.text
+            
+        original_url = s3_links['objectURL']
+        
+        # Process face cutout
+        processed_url, face_points = process_face_cutout(original_url)
+        
+        return {
+            "original_url": original_url,
+            "processed_url": processed_url,
+            "face_points": face_points
+        }
 
     except Exception as e:
         print(f"Error in uploadToS3: {str(e)}")

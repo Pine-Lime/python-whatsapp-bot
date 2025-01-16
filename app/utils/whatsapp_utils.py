@@ -86,19 +86,22 @@ def process_whatsapp_message(body):
     # Check if the message contains an image
     if message.get("type") == "image":
         try:
-            # Get the image ID directly from the message
             image_id = message["image"]["id"]
             logging.info(f"Processing image with ID: {image_id}")
             
-            # Upload directly using the media ID
-            s3_url = uploadToS3(image_id)
+            # Upload and process image
+            result = uploadToS3(image_id)
             
-            if isinstance(s3_url, str) and s3_url.startswith('http'):
-                response_text = "Image received and uploaded successfully!"
-                logging.info(f"Image uploaded successfully to: {s3_url}")
+            if isinstance(result, dict):
+                response_text = "Image processed successfully!\n"
+                if result.get("face_points"):
+                    num_faces = len(result["face_points"])
+                    response_text += f"Found {num_faces} faces in the image.\n"
+                response_text += f"Original image: {result['original_url']}\n"
+                if result.get("processed_url"):
+                    response_text += f"Processed image: {result['processed_url']}"
             else:
-                response_text = f"Sorry, I couldn't process your image: {s3_url}"
-                logging.error(f"Failed to upload image: {s3_url}")
+                response_text = f"Sorry, I couldn't process your image: {result}"
                 
         except Exception as e:
             logging.error(f"Error processing image: {e}")
@@ -108,7 +111,7 @@ def process_whatsapp_message(body):
         message_body = message["text"]["body"]
         response_text = generate_response(message_body, wa_id, name)
 
-    # Prepare response message
+    # Send response
     data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response_text)
     send_message(data)
 

@@ -1,7 +1,23 @@
 flask
-python-dotenv
+python-dotenv>=1.0.0
 openai
 aiohttp
-requests
+requests>=2.31.0
 supabase
 pyodbc==4.0.39
+
+# Image Processing
+Pillow>=10.1.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+boto3>=1.34.11
+botocore>=1.34.11
+
+# Logging
+logging>=0.4.9.6
+
+# Date/Time
+python-dateutil>=2.8.2
+
+# File handling
+python-magic>=0.4.27  # For file type detection
