@@ -9,6 +9,7 @@ from supabase import create_client, Client
 import os
 import uuid
 import pyodbc
+import time
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -102,7 +103,7 @@ def generate_game_url(order_id: str, game_text: dict, user_names: dict, face_cut
         "userName": user_names.get("sender", ""),
         "gameText": game_text,
         "status": "PREVIEW",
-        "gameURL": f"https://whack-a-me.com/game/{uuid_order_id}",
+        "gameURL": f"https://games.pinenli.me/?order_id={uuid_order_id}",
         "gameType": "Whack-A-Me"
     }
 
@@ -283,11 +284,22 @@ def generate_response(message_body, wa_id, name):
         thread = client.beta.threads.create()
         store_thread(wa_id, thread.id)
         thread_id = thread.id
-
-    # Otherwise, retrieve the existing thread
     else:
         logging.info(f"Retrieving existing thread for {name} with wa_id {wa_id}")
         thread = client.beta.threads.retrieve(thread_id)
+
+    # Check for any active runs and wait for them to complete
+    runs = client.beta.threads.runs.list(thread_id=thread_id)
+    for run in runs.data:
+        if run.status in ['queued', 'in_progress', 'requires_action']:
+            while True:
+                run = client.beta.threads.runs.retrieve(
+                    thread_id=thread_id,
+                    run_id=run.id
+                )
+                if run.status in ['completed', 'failed', 'cancelled']:
+                    break
+                time.sleep(1)
 
     # Add message to thread
     message = client.beta.threads.messages.create(
