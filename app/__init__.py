@@ -18,6 +18,11 @@ def create_app():
     app.register_blueprint(webhook_blueprint)
 
     # Face Cutout API settings
-    app.config['FACE_CUTOUT_API_KEY'] = os.getenv('FACE_CUTOUT_API_KEY')
+    app.config['FACE_CUTOUT_API_KEY'] = os.environ.get('FACE_CUTOUT_API_KEY')
+
+    # Add a root route
+    @app.route('/')
+    def home():
+        return 'WhatsApp Bot Service is running'
 
     return app
